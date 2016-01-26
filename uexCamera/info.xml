@@ -1,8 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <uexplugins>
     <plugin
-        uexName="uexCamera" version="3.0.14.5" build="14">
-        <info>14.5:有时魅族4会在open时提示抛出RuntimeException，原因暂认为是内存不足，进行trycatch处理；进行处理让相机不超过屏幕分辨率</info>
+        uexName="uexCamera" version="3.0.14.6" build="14">
+        <info>14.6:三星手机还是没有照相机图标和地理位置栏，进行marginBottom = 48dp 的处理</info>
+        <build>14.5:有时魅族4会在open时提示抛出RuntimeException，原因暂认为是内存不足，进行trycatch处理；进行处理让相机不超过屏幕分辨率</build>
         <build>14.4:在openViewCamera接口里增加了调整质量的字段quality，具体使用方法见文档；优化了压缩算法</build>
         <build>14.3:修复了显示找不到名为:my_uex_test_view的layout文件的测试错误</build>
         <build>14:新增自定义View相机功能，可自行设置大小、位置，可传入地理位置，可调整闪光灯模式和前后置摄像头切换，并自带图像翻转和压缩功能</build>
