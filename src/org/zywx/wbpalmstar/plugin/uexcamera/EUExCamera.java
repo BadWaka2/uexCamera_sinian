@@ -58,7 +58,7 @@ public class EUExCamera extends EUExBase implements CallbackCameraViewClose {
 	private boolean mWillCompress;
 	private int mQuality;
 	private View view;// 自定义相机View
-	private CameraView cameraView;// 自定义相机View实例
+	private CameraView mCameraView;// 自定义相机View实例
 
 	public EUExCamera(Context context, EBrowserView inParent) {
 		super(context, inParent);
@@ -285,17 +285,17 @@ public class EUExCamera extends EUExBase implements CallbackCameraViewClose {
 			// return;
 			// }
 			view = View.inflate(mContext, EUExUtil.getResLayoutID("plugin_camera_view_camera"), null);// 用view引入布局文件
-			cameraView = (CameraView) view;// 将View强转为CameraView，获得CameraView的实例
-			cameraView.setmEuExCamera(this);// 设置EUExCamera的实例
-			cameraView.setCallbackCameraViewClose(this);// 注册callback，将当前类传入
-			cameraView.setLocationText(location);// 调用方法写入地址
+			mCameraView = (CameraView) view;// 将View强转为CameraView，获得CameraView的实例
+			mCameraView.setmEuExCamera(this);// 设置EUExCamera的实例
+			mCameraView.setCallbackCameraViewClose(this);// 注册callback，将当前类传入
+			mCameraView.setLocationText(location);// 调用方法写入地址
 			if (quality != -1) {// 如果quality格式正确
-				cameraView.setQuality(quality);
+				mCameraView.setQuality(quality);
 			}
 			RelativeLayout.LayoutParams lparm = new RelativeLayout.LayoutParams(w, h);
 			lparm.leftMargin = x;
 			lparm.topMargin = y;
-			addViewToCurrentWindow(cameraView, lparm);
+			addViewToCurrentWindow(mCameraView, lparm);
 		}
 	}
 
@@ -321,7 +321,7 @@ public class EUExCamera extends EUExBase implements CallbackCameraViewClose {
 	public void changeFlashMode(String[] parm) {
 		String flashMode = parm[0];
 		if (flashMode.equals("0") || flashMode.equals("1") || flashMode.equals("2")) {
-			cameraView.setFlashMode(Integer.valueOf(flashMode));
+			mCameraView.setFlashMode(Integer.valueOf(flashMode));
 			jsCallback(FUNC_CHANGE_FLASHMODE_CALLBACK, 0, EUExCallback.F_C_TEXT, flashMode);
 		} else {
 			jsCallback(FUNC_CHANGE_FLASHMODE_CALLBACK, 0, EUExCallback.F_C_TEXT, "-1");
@@ -343,7 +343,7 @@ public class EUExCamera extends EUExBase implements CallbackCameraViewClose {
 			((Activity) mContext).runOnUiThread(new Runnable() {
 				@Override
 				public void run() {
-					cameraView.overturnCamera();
+					mCameraView.overturnCamera();
 				}
 			});
 			jsCallback(FUNC_CHANGE_CAMERA_POSITION_CALLBACK, 0, EUExCallback.F_C_TEXT, cameraPosition);
@@ -352,7 +352,7 @@ public class EUExCamera extends EUExBase implements CallbackCameraViewClose {
 			((Activity) mContext).runOnUiThread(new Runnable() {
 				@Override
 				public void run() {
-					cameraView.overturnCamera();
+					mCameraView.overturnCamera();
 				}
 			});
 			jsCallback(FUNC_CHANGE_CAMERA_POSITION_CALLBACK, 0, EUExCallback.F_C_TEXT, cameraPosition);
@@ -507,6 +507,11 @@ public class EUExCamera extends EUExBase implements CallbackCameraViewClose {
 					e.printStackTrace();
 				}
 				jsCallback(FUNC_OPEN_VIEW_CAMERA_CALLBACK, 0, EUExCallback.F_C_TEXT, jsonResult);
+			}
+		} else if (resultCode == Activity.RESULT_CANCELED) {// 如果是取消标志 change by
+															// waka 2016-01-28
+			if (requestCode == 68) {// 如果是SecondActivity传回来的取消标记
+				mCameraView.setCameraTakingPhoto(false);// 设置正在照相标记为false
 			}
 		}
 	}

@@ -62,8 +62,8 @@ public class SecondActivity extends Activity implements OnClickListener {
 			options.inJustDecodeBounds = false;// 将bitmap写入内存
 			bitmap = BitmapFactory.decodeFile(fileName, options);
 			imgPhoto.setImageBitmap(bitmap);
-//			bitmap = BitmapFactory.decodeFile(fileName);
-//			imgPhoto.setBackgroundDrawable(new BitmapDrawable(bitmap));
+			// bitmap = BitmapFactory.decodeFile(fileName);
+			// imgPhoto.setBackgroundDrawable(new BitmapDrawable(bitmap));
 		}
 	}
 
@@ -77,6 +77,11 @@ public class SecondActivity extends Activity implements OnClickListener {
 		// 重拍
 		if (v.getId() == EUExUtil.getResIdID("plugin_camera_btnAgain")) {
 			deleteFile(fileName);
+
+			// 回传取消标记给主Activity
+			Intent intent = new Intent();
+			setResult(RESULT_CANCELED, intent);
+
 			finish();
 		}
 		// 提交

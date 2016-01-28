@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -13,6 +14,8 @@ import java.util.Locale;
 import org.zywx.wbpalmstar.engine.universalex.EUExUtil;
 import org.zywx.wbpalmstar.plugin.uexcamera.EUExCamera;
 import org.zywx.wbpalmstar.plugin.uexcamera.LogUtils;
+import org.zywx.wbpalmstar.plugin.uexcamera.Util;
+
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
@@ -33,6 +36,7 @@ import android.hardware.Camera.CameraInfo;
 import android.hardware.Camera.Parameters;
 import android.hardware.Camera.PictureCallback;
 import android.hardware.Camera.Size;
+import android.media.ExifInterface;
 import android.os.Build;
 import android.os.Handler;
 import android.text.TextUtils;
@@ -68,12 +72,12 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	private SurfaceView surfaceView;
 	private SurfaceHolder surfaceHolder;
 	private Camera camera;
-	private boolean IS_CAMERA_TAKING_PHOTO = false;// camera正在照相标识
+	private boolean isCameraTakingPhoto = false;// camera正在照相标识
 	private CameraInfo cameraInfo;// 摄像头信息
 	private int cameraCount;// 摄像头数量
 	private boolean isHasFrontCamera = false;// 是否有前置摄像头
 	private boolean isHasBackCamera = false;// 是否有后置摄像头
-	public static int cameraPosition = 1;// 摄像头位置，0代表前置，1代表后置，默认为1
+	public static int cameraPosition = 0;// 摄像头位置，0代表后置，1代表前置，默认为0
 	private int flashMode = 0;// 闪光灯状态，0为自动，1为打开，2为关闭，默认为自动
 	private TextView tvLocation;// 位置文本
 	private int quality = 60;// 图片质量，默认为60%
@@ -85,6 +89,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	private int resolutionheight;// camera支持和屏幕最佳适配分辨率的高
 	private OrientationEventListener orientationEventListener = null;// 方向监听器
 	private int currentOrientation = 0;// 预览的方向
+	private int pictureOrientation = 0;// 图片的方向
 	private CallbackCameraViewClose callbackClose;// 上下文removeView的回调
 	private MODE mode = MODE.NONE;// 默认聚焦模式
 	private View viewFocus;// 聚焦视图View
@@ -101,6 +106,15 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 			if (data.length != 0) {
 				Log.i("quality", "quality onPictureTaken---->" + quality);
 				String fileName = savePhoto(data, quality);// 保存bitmap，压缩程度为60
+				int degree = getDegreeByFilePath(fileName);// 通过文件路径获得图片的degree
+				if (degree > 0) {// 如果degree大于0，旋转图片
+					// 删除原来的图片
+					File file = new File(fileName);
+					file.delete();
+					// 重新生成新的图片
+					fileName = savePhoto(data, quality, degree);
+				}
+
 				// 跳转到第二个Activity，携带着文件路径
 				Intent intent = new Intent(context, SecondActivity.class);
 				intent.putExtra("location", tvLocation.getText().toString());
@@ -110,7 +124,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 				} else {
 					Toast.makeText(context, "跳转失败！", Toast.LENGTH_SHORT).show();
 				}
-				IS_CAMERA_TAKING_PHOTO = false;// camera活干完了，可以继续按了
+				isCameraTakingPhoto = false;// camera活干完了，可以继续按了
 			}
 			camera.startPreview();// 重新预览
 		}
@@ -134,6 +148,9 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	public CameraView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		this.context = context;
+		// ((Activity)
+		// this.context).setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);//
+		// 设置Activity方向
 		initView();
 		initData();
 		initEvent();
@@ -226,6 +243,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 				if (diff > 60) {
 					orientation = (orientation + 45) / 90 * 90;
 					if (orientation != currentOrientation) {
+						// pictureOrientation = orientation;
 						currentOrientation = orientation;
 						setViewRotation();// 设置控件的方向
 						// Toast.makeText(context, "currentOrientation-->>" +
@@ -245,7 +263,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	 */
 	@Override
 	public void surfaceCreated(SurfaceHolder holder) {
-		if (cameraPosition == 0) {
+		if (cameraPosition == 1) {
 			camera = Camera.open(CameraInfo.CAMERA_FACING_FRONT);
 		} else {
 			try {
@@ -257,17 +275,31 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 		}
 		try {
 			camera.setPreviewDisplay(surfaceHolder);// 设置holder主要是用于surfaceView的图片的实时预览，以及获取图片等功能，可以理解为控制camera的操作
+
+			Camera.Parameters parameters = camera.getParameters();// 得到一个已有的(默认的)设置
+
 			// 个别设备需要翻转180度，大部分旋转90度
 			String mod = Build.MODEL;// 获得设备型号
-			if ("M9".equalsIgnoreCase(mod) || "MX".equalsIgnoreCase(mod)) {
-				camera.setDisplayOrientation(180);
+			// if ("M9".equalsIgnoreCase(mod) || "MX".equalsIgnoreCase(mod)) {
+			// camera.setDisplayOrientation(180);
+			// } else {
+			// camera.setDisplayOrientation(90);
+			// }
+			if (Build.VERSION.SDK_INT >= 8) {
+				// MZ 180， other 90...
+				if ("M9".equalsIgnoreCase(mod) || "MX".equalsIgnoreCase(mod)) {
+					setDisplayOrientation(camera, 180);
+				} else {
+					setDisplayOrientation(camera, 90);
+				}
 			} else {
-				camera.setDisplayOrientation(90);
+				parameters.set("orientation", "portrait");
+				parameters.set("rotation", 90);
 			}
-			Camera.Parameters parameters = camera.getParameters();// 得到一个已有的(默认的)设置
+
 			getBestResolution(parameters);// 获得最佳分辨率
 			parameters.setPreviewSize(resolutionheight, resolutionWidth);// 用算出的误差最小的支持分辨率作为预览分辨率
-			parameters.setRotation(90);
+			// parameters.setRotation(90);
 			parameters.setFlashMode(Parameters.FLASH_MODE_OFF);// 设置默认闪光灯模式为关
 			camera.setParameters(parameters);
 			camera.startPreview();// 开始预览
@@ -276,6 +308,17 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 			camera.release();
 			camera = null;
 			e.printStackTrace();
+		}
+	}
+
+	private void setDisplayOrientation(Camera camera, int angle) {
+		Method downPolymorphic;
+		try {
+			downPolymorphic = camera.getClass().getMethod("setDisplayOrientation", new Class[] { int.class });
+			if (downPolymorphic != null) {
+				downPolymorphic.invoke(camera, new Object[] { angle });
+			}
+		} catch (Exception e1) {
 		}
 	}
 
@@ -439,14 +482,15 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 				return;
 			}
 			// 如果照相机没有正在拍照，则拍照；因为连续按拍照键会报错，所以得设置这样一个标志位
-			if (IS_CAMERA_TAKING_PHOTO == false) {
+			Log.i("uexCamera", "isCameraTakingPhoto---->" + isCameraTakingPhoto);
+			if (isCameraTakingPhoto == false) {
 				// 照相前判定如果是前置摄像头，则将照片位置旋转270度，必须这样做要不会前置摄像头重拍时会图像位置会发生颠倒
-				if (cameraPosition == 0) {
+				if (cameraPosition == 1) {
 					Camera.Parameters parameters = camera.getParameters();
 					parameters.setRotation(270);
 					camera.setParameters(parameters);
 				}
-				IS_CAMERA_TAKING_PHOTO = true;
+				isCameraTakingPhoto = true;
 				camera.takePicture(null, null, pictureCallback);// 拍照
 			}
 		}
@@ -484,6 +528,23 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	}
 
 	/**
+	 * 得到旋转图片的角度
+	 * 
+	 * @return
+	 */
+	private int getRotate() {
+		CameraInfo info = new CameraInfo();
+		Camera.getCameraInfo(cameraPosition, info);
+		int r = 0;
+		if (info.facing == CameraInfo.CAMERA_FACING_FRONT) {
+			r = (info.orientation - pictureOrientation + 360) % 360;
+		} else {
+			r = (info.orientation + pictureOrientation) % 360;
+		}
+		return r;
+	}
+
+	/**
 	 * 保存照片
 	 * 
 	 * @param data
@@ -505,12 +566,75 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 			Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, options);
 			if (bitmap != null) {
 				try {
+					bitmap = Util.rotate(bitmap, getRotate());
+					bitmap = rotateBitmap(bitmap, currentOrientation);
 					File file = new File(filePath);
 					if (!file.exists()) {
 						file.mkdirs();// 如果不存在，则创建所有的父文件夹
 					}
 					Log.i(TAG, "currentOrientation--->" + currentOrientation);
-					bitmap = rotateBitmap(bitmap, currentOrientation);// 旋转图片
+					// bitmap = rotateBitmap(bitmap, currentOrientation);// 旋转图片
+					// bitmap = addWaterMarkText(bitmap,
+					// tvLocation.getText().toString());// 添加文字水印
+					SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US);// Date格式转换为字符串
+					String fileName = filePath + "/" + simpleDateFormat.format(new Date()) + ".jpg";// 图片文件名
+					FileOutputStream outputStream = new FileOutputStream(fileName);
+					bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream);// 压缩图片，并放在输出流中
+					// Toast.makeText(context, fileName,
+					// Toast.LENGTH_SHORT).show();
+					return fileName;
+				} catch (FileNotFoundException e) {
+					e.printStackTrace();
+					return null;
+				}
+			} else {
+				Log.i(TAG, "bitmap is null!");
+				return null;
+			}
+		} catch (OutOfMemoryError e) {
+			Toast.makeText(context, MEMORY_BOOM, Toast.LENGTH_LONG).show();
+			LogUtils.o(e.toString());
+			compressRate++;// 压缩比增加
+			savePhoto(data, quality);// 继续压缩
+			return null;
+		} finally {
+			compressRate = 2;// 回归正常压缩比
+		}
+
+	}
+
+	/**
+	 * 保存照片，根据degree保存
+	 * 
+	 * @param data
+	 * @param quality
+	 * @return
+	 */
+	public String savePhoto(byte[] data, int quality, int degree) {
+		// 压缩图片
+		BitmapFactory.Options options = new BitmapFactory.Options();
+		options.inJustDecodeBounds = true;// 不返回实际的bitmap，也不给其分配内存空间,但是允许我们查询图片的信息这其中就包括图片大小信息
+		@SuppressWarnings("unused") // 其实是用了的。。。不将它写入内存，用来获取长宽数据
+		Bitmap bitmapBound = BitmapFactory.decodeByteArray(data, 0, data.length);// 将byte数组转换为bitmapBound，不写入内存，只获得长宽信息
+		options.inSampleSize = compressRate;
+		options.inPurgeable = true;
+		options.inInputShareable = true;
+		options.inTempStorage = new byte[64 * 1024];
+		options.inJustDecodeBounds = false;// decode到的bitmap将写入内存
+		try {
+			Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, options);
+			if (bitmap != null) {
+				try {
+					bitmap = Util.rotate(bitmap, getRotate());
+					if (degree > 0) {
+						bitmap = Util.rotate(bitmap, degree);
+					}
+					File file = new File(filePath);
+					if (!file.exists()) {
+						file.mkdirs();// 如果不存在，则创建所有的父文件夹
+					}
+					Log.i(TAG, "currentOrientation--->" + currentOrientation);
+					// bitmap = rotateBitmap(bitmap, currentOrientation);// 旋转图片
 					// bitmap = addWaterMarkText(bitmap,
 					// tvLocation.getText().toString());// 添加文字水印
 					SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US);// Date格式转换为字符串
@@ -592,10 +716,11 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	 * @return
 	 */
 	private Bitmap rotateBitmap(Bitmap bitmap, int orientation) {
+
 		Matrix matrix = new Matrix();
 		Log.i(TAG, "cameraPosition" + cameraPosition);
 		// 若是前置摄像头，则需要调整方向
-		if (cameraPosition == 0) {
+		if (cameraPosition == 1) {
 			if (orientation == 270) {
 				orientation = 90;
 			} else if (orientation == 90) {
@@ -614,6 +739,41 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 			Toast.makeText(context, MEMORY_BOOM, Toast.LENGTH_SHORT).show();
 			outOfMemoryError.printStackTrace();
 			return null;
+		}
+	}
+
+	/**
+	 * 通过文件路径获得degree
+	 * 
+	 * @param filePath
+	 * @return
+	 */
+	private int getDegreeByFilePath(String filePath) {
+		ExifInterface exif = null;
+		int degree = 0;
+		try {
+			exif = new ExifInterface(filePath);
+			int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1);
+			if (orientation != -1) {
+				switch (orientation) {
+				case ExifInterface.ORIENTATION_NORMAL:
+					degree = 0;
+					break;
+				case ExifInterface.ORIENTATION_ROTATE_90:
+					degree = 90;
+					break;
+				case ExifInterface.ORIENTATION_ROTATE_180:
+					degree = 180;
+					break;
+				case ExifInterface.ORIENTATION_ROTATE_270:
+					degree = 270;
+					break;
+				}
+			}
+			return degree;
+		} catch (IOException e) {
+			e.printStackTrace();
+			return -1;
 		}
 	}
 
@@ -665,7 +825,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 			if (cameraCount < 2) {
 				return;
 			}
-			if (cameraPosition == 1) {
+			if (cameraPosition == 0) {
 				// 现在是后置，变更为前置
 				if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {// 代表摄像头的方位，CAMERA_FACING_FRONT前置CAMERA_FACING_BACK后置
 					camera.stopPreview();// 停掉原来摄像头的预览
@@ -684,7 +844,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 						e.printStackTrace();
 					}
 					camera.startPreview();// 开始预览
-					cameraPosition = 0;
+					cameraPosition = 1;
 					break;
 				}
 			} else {
@@ -706,7 +866,7 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 						e.printStackTrace();
 					}
 					camera.startPreview();// 开始预览
-					cameraPosition = 1;
+					cameraPosition = 0;
 					break;
 				}
 			}
@@ -752,4 +912,14 @@ public class CameraView extends RelativeLayout implements Callback, View.OnClick
 	public void setQuality(int quality) {
 		this.quality = quality;
 	}
+
+	/**
+	 * 设置正在是否正在照相标志
+	 * 
+	 * @param isCameraTakingPhoto
+	 */
+	public void setCameraTakingPhoto(boolean isCameraTakingPhoto) {
+		this.isCameraTakingPhoto = isCameraTakingPhoto;
+	}
+
 }
